@@ -19,15 +19,18 @@ from utils.constants import ARCHIVE_NAMES  as ARCHIVE_NAMES
 from utils.constants import CLASSIFIERS
 from utils.constants import ITERATIONS
 from utils.constants import MTS_DATASET_NAMES
+from utils.constants import ICUB_LABEL_DICT
 
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
 from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
 
 from scipy.interpolate import interp1d
 from scipy.io import loadmat
 
+import pickle
 
 def readucr(filename):
     data = np.loadtxt(filename, delimiter=',')
@@ -100,6 +103,41 @@ def read_dataset(root_dir, archive_name, dataset_name):
 
         datasets_dict[dataset_name] = (x_train.copy(), y_train.copy(), x_test.copy(),
                                        y_test.copy())
+
+    elif archive_name == 'iCub':
+        file_name = cur_root_dir + '/archives/' + archive_name + '/data/' + dataset_name 
+
+        with open(file_name, 'rb') as f:
+            dataset_dict = pickle.load(f)
+
+        # Create empty arrays which will be filled
+        x = []
+        y = []
+
+        if dataset_name.endswith("augmented"):
+            print("== iCub augmented ==")
+            for entry in dataset_dict:
+                x.append(entry['taxel_data'][:51])            # cap at 51 samples (some have 52), all taxels
+                y.append(ICUB_LABEL_DICT[entry['letter']])
+        else:
+            print("== iCub normal ==")
+            for entry in dataset_dict:
+                x.append(entry['taxel_data'][:76])            # cap at 76 samples (some have 77), all taxels
+                #x.append(entry['taxel_data'][:76,[1,6,10]])  # cap at 76 samples (some have 77), taxels: [1,6,10]
+                y.append(ICUB_LABEL_DICT[entry['letter']])
+
+        # Convert to numpy arrays
+        x = 255 - np.array(x)
+        y = np.array(y)
+
+        x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.20, shuffle=True, stratify=y)
+
+        print('Samples:', len(x))
+        print('Train  :', len(x_train), x_train.shape)
+        print('Test   :', len(x_test), x_train.shape)
+
+        datasets_dict[dataset_name] = (x_train.copy(), y_train.copy(), x_test.copy(), y_test.copy())
+
     else:
         file_name = cur_root_dir + '/archives/' + archive_name + '/' + dataset_name + '/' + dataset_name
         x_train, y_train = readucr(file_name + '_TRAIN')
@@ -361,8 +399,9 @@ def save_logs_t_leNet(output_directory, hist, y_pred, y_true, duration):
 
     df_best_model.to_csv(output_directory + 'df_best_model.csv', index=False)
 
-    # plot losses
-    plot_epochs_metric(hist, output_directory + 'epochs_loss.png')
+    # plot metrics
+    plot_epochs_metric(hist, output_directory + 'epochs_loss.png', 'loss')
+    plot_epochs_metric(hist, output_directory + 'epochs_accuracy.png', 'accuracy')
 
 
 def save_logs(output_directory, hist, y_pred, y_true, duration, lr=True, y_true_val=None, y_pred_val=None):
@@ -391,8 +430,9 @@ def save_logs(output_directory, hist, y_pred, y_true, duration, lr=True, y_true_
 
     # for FCN there is no hyperparameters fine tuning - everything is static in code
 
-    # plot losses
-    plot_epochs_metric(hist, output_directory + 'epochs_loss.png')
+    # plot metrics
+    plot_epochs_metric(hist, output_directory + 'epochs_loss.png', 'loss')
+    plot_epochs_metric(hist, output_directory + 'epochs_accuracy.png', 'accuracy')
 
     return df_metrics
 
